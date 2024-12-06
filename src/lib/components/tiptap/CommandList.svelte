@@ -1,21 +1,20 @@
 <script lang="ts">
 	type Props = {
 		items: any[];
+		open: boolean;
 		command: (index: number) => void;
 	};
-	let { items, command }: Props = $props();
+	let { items, command, open = $bindable(false) }: Props = $props();
 
 	let selectedIndex: number = $state(0);
 
 	$effect(() => {
-		console.log('items', items);
 		if (items) {
 			selectedIndex = 0;
 		}
 	});
 
 	export function onKeyDown(event: KeyboardEvent) {
-		console.log(event);
 		if (event.key === 'ArrowUp') {
 			upHandler();
 			return true;
@@ -25,9 +24,9 @@
 			downHandler();
 			return true;
 		}
-
 		if (event.key === 'Enter') {
 			enterHandler();
+			open = false;
 			return true;
 		}
 
@@ -42,7 +41,7 @@
 		selectedIndex = (selectedIndex + 1) % items.length;
 	}
 
-	function enterHandler() {
+	export function enterHandler() {
 		selectItem(selectedIndex);
 	}
 
@@ -63,7 +62,7 @@
 			</button>
 		{/each}
 	{:else}
-		<div class="item">No result</div>
+		<div class="item">No columns to select</div>
 	{/if}
 </div>
 

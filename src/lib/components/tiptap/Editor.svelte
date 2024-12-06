@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount, unmount } from 'svelte';
-	import { Editor, Extension } from '@tiptap/core';
+	import { Editor, Extension, Node, mergeAttributes } from '@tiptap/core';
 	import StarterKit from '@tiptap/starter-kit';
 	import Suggestion from '@tiptap/suggestion';
 	import CommandsList from './CommandList.svelte';
@@ -8,20 +8,24 @@
 	import { mount } from 'svelte';
 	import CommandList from './CommandList.svelte';
 
+	let { columns }: { columns: string[] } = $props();
+
 	let element: HTMLDivElement;
 	let commandsListEl: HTMLDivElement | undefined = $state();
 	let editor: Editor | undefined = $state();
 
-	let commandsListProps = $state({ props: { items: [] } });
+	let commandsListProps = $state({ props: { items: [], open: false } });
+	let component: CommandList;
 
 	type CommandType = {
-		editor: any;
+		editor: Editor;
 		range: any;
 		props: any;
 	};
 
 	const commands = Extension.create({
-		name: 'commands',
+		priority: 1,
+		name: 'slash-commands',
 
 		addOptions() {
 			return {
@@ -44,45 +48,91 @@
 		}
 	});
 
+	const ColumnNode = Node.create({
+		name: 'nodeView',
+		group: 'inline',
+		inline: true,
+		atom: true,
+
+		addAttributes() {
+			return {
+				text: {
+					default: ''
+				}
+			};
+		},
+
+		parseHTML() {
+			return [
+				{
+					tag: 'node-view'
+				}
+			];
+		},
+
+		renderHTML({ HTMLAttributes }) {
+			return ['node-view', mergeAttributes(HTMLAttributes)];
+		},
+
+		addNodeView() {
+			return ({ node }) => {
+				const dom = document.createElement('span');
+
+				dom.classList.add('ob-column-title');
+
+				dom.innerHTML = node.attrs.text;
+
+				return {
+					dom
+				};
+			};
+		}
+	});
+
 	const suggestion = {
 		items: ({ query }: { query: any }) => {
 			return [
-				{
-					title: 'Heading 1',
-					command: ({ editor, range }: CommandType) => {
-						editor.chain().focus().deleteRange(range).setNode('heading', { level: 1 }).run();
-					}
-				},
-				{
-					title: 'Heading 2',
-					command: ({ editor, range }: CommandType) => {
-						editor.chain().focus().deleteRange(range).setNode('heading', { level: 2 }).run();
-					}
-				},
-				{
-					title: 'Bold',
-					command: ({ editor, range }: CommandType) => {
-						editor.chain().focus().deleteRange(range).setMark('bold').run();
-					}
-				},
-				{
-					title: 'Italic',
-					command: ({ editor, range }: CommandType) => {
-						editor.chain().focus().deleteRange(range).setMark('italic').run();
-					}
-				}
+				...columns.map((c) => {
+					return {
+						title: c,
+						command: ({ editor, range }: CommandType) => {
+							try {
+								editor
+									.chain()
+									.focus()
+									.deleteRange(range)
+									.insertContent([
+										{
+											type: 'nodeView',
+											attrs: {
+												text: c
+											}
+										},
+										{
+											type: 'text',
+											text: ' ',
+											isInline: true
+										}
+									])
+									.run();
+							} catch (error) {
+								console.error(error);
+							}
+						}
+					};
+				})
 			]
 				.filter((item) => item.title.toLowerCase().startsWith(query.toLowerCase()))
 				.slice(0, 10);
 		},
 
 		render: () => {
-			let component: CommandList;
 			let popup: Instance[];
 
 			return {
 				onStart: (props: any) => {
 					commandsListProps.props = props;
+					commandsListProps.props.open = true;
 					component = mount(CommandsList, {
 						target: commandsListEl!,
 						props: commandsListProps.props as any
@@ -104,7 +154,6 @@
 				},
 
 				onUpdate(props: any) {
-					console.log('updae', props);
 					commandsListProps.props.items = props.items;
 
 					if (!props.clientRect) {
@@ -138,9 +187,21 @@
 
 	onMount(() => {
 		editor = new Editor({
+			editorProps: {
+				handleDOMEvents: {
+					keydown: (_, event) => {
+						if (event.key === 'Enter' && commandsListProps.props.open) {
+							event.preventDefault();
+							component.enterHandler();
+							commandsListProps.props.open = false;
+						}
+					}
+				}
+			},
 			element: element,
 			extensions: [
 				StarterKit,
+				ColumnNode,
 				commands.configure({
 					suggestion
 				})
@@ -160,16 +221,33 @@
 	});
 </script>
 
-<div bind:this={element}></div>
-{#if editor}
-	<div bind:this={commandsListEl}></div>
-	<p class="mt-2">
-		Type <span>/</span> to see columns
-	</p>
-{/if}
+<div class="relative flex h-full flex-col gap-1">
+	<div bind:this={element} class="flex-1"></div>
+	{#if editor}
+		<div bind:this={commandsListEl}></div>
+		<p class="flex w-full items-center rounded-lg bg-gray-100 px-2 py-1 text-sm">
+			Type <span class="mx-2 rounded bg-blue-500 text-white">
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					fill="none"
+					viewBox="0 0 24 24"
+					stroke-width={1.5}
+					stroke="currentColor"
+					class="size-5"
+				>
+					<path stroke-linecap="round" stroke-linejoin="round" d="m9 20.247 6-16.5" />
+				</svg>
+			</span> to see columns
+		</p>
+	{/if}
+</div>
 
 <style lang="postcss">
 	:global(.tiptap) {
-		@apply rounded-lg border px-3 py-4;
+		@apply relative min-h-full rounded-lg border px-4 py-3;
+	}
+
+	:global(.ob-column-title) {
+		@apply !whitespace-nowrap rounded-full border bg-blue-500 px-2 py-1 text-xs text-white;
 	}
 </style>
